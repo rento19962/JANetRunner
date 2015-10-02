@@ -9,6 +9,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.keyser.anr.core.AbstractCard;
 import org.keyser.anr.core.AbstractCardActionChangedEvent;
@@ -42,14 +44,13 @@ import org.keyser.anr.core.UserDragAction;
 import org.keyser.anr.core.VariableCost;
 import org.keyser.anr.core.corp.CorpServer;
 import org.keyser.anr.web.dto.CardDto.CardType;
-import org.keyser.anr.web.dto.CardDto.Face;
 import org.keyser.anr.web.dto.ServerDto.Operation;
 
 public class EventsBasedGameDtoBuilder {
 
 	private final EventMatchers matchers = new EventMatchers();
 
-	private Map<AbstractCard, CardDto> cards = new HashMap<>();
+	private Map<AbstractCard, CardDtoBuilder> cards = new HashMap<>();
 
 	private Set<PlayerType> actionsChanged = new HashSet<>();
 
@@ -89,14 +90,14 @@ public class EventsBasedGameDtoBuilder {
 		with(card, dto -> updateLocation(card, dto));
 	}
 
-	private void updateLocation(AbstractCard card, CardDto dto) {
+	private void updateLocation(AbstractCard card, CardDtoBuilder dto) {
 		CardLocation location = card.getLocation();
 		dto.setLocation(location);
 		updateFace(card, dto);
 	}
 
-	private void with(AbstractCard card, FlowArg<CardDto> act) {
-		CardDto dto = getOrCreate(card);
+	private void with(AbstractCard card, FlowArg<CardDtoBuilder> act) {
+		CardDtoBuilder dto = getOrCreate(card);
 		act.apply(dto);
 	}
 
@@ -105,7 +106,7 @@ public class EventsBasedGameDtoBuilder {
 		with(card, dto -> updateFace(card, dto));
 	}
 
-	private void updateFace(AbstractCard card, CardDto dto) {
+	private void updateFace(AbstractCard card, CardDtoBuilder dto) {
 		dto.setFace(card.isRezzed() ? CardDto.Face.up : CardDto.Face.down);
 	}
 
@@ -132,10 +133,10 @@ public class EventsBasedGameDtoBuilder {
 		scoreChanged.put(primary.getOwner(), id.getScore());
 	}
 
-	private CardDto getOrCreate(AbstractCard card) {
-		CardDto dto = cards.get(card);
+	private CardDtoBuilder getOrCreate(AbstractCard card) {
+		CardDtoBuilder dto = cards.get(card);
 		if (dto == null) {
-			dto = new CardDto(card.getId(), card.getOwner());
+			dto = new CardDtoBuilder(card);
 			cards.put(card, dto);
 		}
 		return dto;
@@ -166,7 +167,7 @@ public class EventsBasedGameDtoBuilder {
 		dto.setServers(servers);
 
 		for (AbstractCard ac : game.getCards()) {
-			CardDto cdto = getOrCreate(ac);
+			CardDtoBuilder cdto = getOrCreate(ac);
 
 			if (ac instanceof AbstractId)
 				cdto.setType(CardType.id);
@@ -240,15 +241,16 @@ public class EventsBasedGameDtoBuilder {
 		boolean corpAction = false;
 		boolean runnerAction = false;
 
-		// on reset les actions car la méthode peut-être utilisé plusieurs fois
-		for (CardDto cdto : cards.values()) {
-			cdto.setActions(null);
-		}
-
 		// les actions sont à mapper sur les cartes...
 		boolean basicClone = true;
-		for (UserAction ua : actionsContext.getUserActions()) {
 
+		Function<? super CardDtoBuilder, ? extends CardDto> buildDto = b -> b.build(playerType);
+		if (!cards.isEmpty()) {
+			List<CardDto> cardsDto = cards.values().stream().map(buildDto).collect(Collectors.toList());
+			dto.setCards(cardsDto);
+		}
+
+		for (UserAction ua : actionsContext.getUserActions()) {
 			PlayerType to = ua.getTo();
 			if (PlayerType.CORP == to)
 				corpAction = true;
@@ -260,71 +262,36 @@ public class EventsBasedGameDtoBuilder {
 
 				AbstractCard source = ua.getSource();
 				CorpServer server = ua.getServer();
+				ActionDto convertAction = convertAction(ua);
 				if (source != null) {
-					CardDto cdto = getOrCreate(source);
-					ActionDto action = convertAction(ua);
-					if (action != null)
-						cdto.addAction(action);
+					List<CardDto> cardsDto = dto.getCards();
+					if (cardsDto == null)
+						dto.setCards(cardsDto = new ArrayList<>());
+
+					Optional<CardDto> first = cardsDto.stream().filter(c -> c.getId() == source.getId()).findFirst();
+					if (first.isPresent()) {
+						first.get().addAction(convertAction);
+					} else {
+						// la carte n'existe pas il faut la créer
+						CardDto cdto = buildDto.apply(new CardDtoBuilder(source));
+						cardsDto.add(cdto);
+						cdto.addAction(convertAction);
+					}
+
 				} else if (server != null) {
 					ServerDto sdto = getOrCreate(dto, server);
-					ActionDto action = convertAction(ua);
-					if (action != null)
-						sdto.addAction(action);
+					sdto.addAction(convertAction);
 				}
 			}
+
 		}
 
 		UserActionContext primary = actionsContext.getContext();
-		if (basicClone)
+		if (basicClone && primary != null)
 			primary = primary.basicClone();
 		dto.setPrimary(primary);
 
 		dto.setActions(new ActionIndicatorDto(corpAction, runnerAction));
-
-		if (!cards.isEmpty()) {
-			dto.setCards(new ArrayList<>(cards.values()));
-		}
-
-		// mise à jour des positions des cartes
-		if (dto.getCards() != null) {
-			for (CardDto c : dto.getCards())
-				setZoomAndFace(playerType, c);
-		}
-	}
-
-	private void setZoomAndFace(PlayerType playerType, CardDto c) {
-		CardLocation location = c.getLocation();
-		if (location != null) {
-			CardType type = c.getType();
-			if (type == CardType.id) {
-				c.setFace(Face.up);
-			} else {
-
-				if (PlayerType.CORP == playerType) {
-					if (location.isInCorpHand()) {
-						c.setLocation(location.toHandLocation());
-						c.setFace(Face.up);
-					}
-
-					if (location.isInRD())
-						c.setZoomable(Face.down);
-					else if (c.getLocalFaction() == playerType)
-						c.setZoomable(Face.up);
-
-				} else if (PlayerType.RUNNER == playerType) {
-					if (location.isInRunnerHand()) {
-						c.setLocation(location.toHandLocation());
-						c.setFace(Face.up);
-					}
-
-					if (location.isInStack())
-						c.setZoomable(Face.down);
-					else if (c.getLocalFaction() == playerType)
-						c.setZoomable(Face.up);
-				}
-			}
-		}
-
 	}
 
 	/**
