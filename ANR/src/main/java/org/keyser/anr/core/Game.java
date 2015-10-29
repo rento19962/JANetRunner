@@ -7,6 +7,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -27,7 +28,7 @@ public class Game {
 
 	public static class ActionsContext {
 
-		private Map<Integer, FeedbackHandler<?>> actions = new HashMap<>();
+		private Map<Integer, FeedbackHandler<?>> actions = new LinkedHashMap<>();
 
 		private UserActionContext context;
 
@@ -218,7 +219,7 @@ public class Game {
 	private int nextAction;
 
 	private int nextRun;
-	
+
 	private int nextRoutine;
 
 	private Turn turn;
@@ -234,8 +235,8 @@ public class Game {
 		// implémentation spécifique
 		listener.add(e -> true, f -> new ANREventMatcher(f).apply());
 	}
-	
-	public ReadyedRoutine createRoutine(Routine routine){
+
+	public ReadyedRoutine createRoutine(Routine routine) {
 		return new ReadyedRoutine(nextRoutine++, routine);
 	}
 
@@ -402,6 +403,7 @@ public class Game {
 		} else if (ac instanceof Runner) {
 			runner = (Runner) ac;
 			runner.setLocation(CardLocation.grip(-1));
+			runner.init();
 		}
 
 		return ac;

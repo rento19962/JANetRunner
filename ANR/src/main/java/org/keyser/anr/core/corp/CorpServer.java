@@ -232,5 +232,5 @@ public class CorpServer {
 
 	public int getId() {
 		return id;
-	}
+	}	
 }
