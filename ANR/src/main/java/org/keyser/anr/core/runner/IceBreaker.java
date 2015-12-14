@@ -4,6 +4,7 @@ import static java.text.MessageFormat.format;
 
 import java.util.function.Predicate;
 
+import org.keyser.anr.core.CollectAbstractHabilites;
 import org.keyser.anr.core.CollectHabilities;
 import org.keyser.anr.core.Cost;
 import org.keyser.anr.core.CostForAction;
@@ -11,6 +12,7 @@ import org.keyser.anr.core.EncounteredIce;
 import org.keyser.anr.core.FeedbackWithArgs;
 import org.keyser.anr.core.Flow;
 import org.keyser.anr.core.FlowArg;
+import org.keyser.anr.core.IceSubsClearedsEvent;
 import org.keyser.anr.core.Runner;
 import org.keyser.anr.core.SubList;
 import org.keyser.anr.core.TokenType;
@@ -27,11 +29,13 @@ public abstract class IceBreaker extends Program {
 		super(id, meta);
 
 		addBreakerHability(this::configureBreak, true);
-		addBreakerHability(this::configurePump, true);
+		addBreakerHability(this::configurePump, false);
+
+		match(IceSubsClearedsEvent.class, em -> em.run(this::clearBoostedStrength));
 
 	}
 
-	private void configureBreak(CollectHabilities hab) {
+	private void configureBreak(CollectAbstractHabilites hab) {
 		Runner runner = getRunner();
 
 		EncounteredIce ice = game.getTurn().getRun().get().getIce().get();
@@ -54,7 +58,7 @@ public abstract class IceBreaker extends Program {
 		}
 	}
 
-	private void configurePump(CollectHabilities hab) {
+	private void configurePump(CollectAbstractHabilites hab) {
 		Runner runner = getRunner();
 		for (BoostUsage us : getMeta().getBoosts()) {
 			UserAction action = new UserAction(runner, this, us.getCostForAction(), format("Boost by {0} ", us.getBoost()));
@@ -65,7 +69,7 @@ public abstract class IceBreaker extends Program {
 	/**
 	 * Permet de remetre à zero
 	 */
-	public void clearBoostedStrength() {
+	private void clearBoostedStrength() {
 		boostedStrength = 0;
 	}
 

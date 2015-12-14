@@ -120,8 +120,7 @@ public class Run {
 
 		game.user(SimpleFeedback.noop(runner, runner, "Jack Off"), () -> {
 			game.chat("{0} jacks off", runner);
-			setStatus(Status.ENDED);
-			clear();
+			failTheRun();
 		});
 		game.user(SimpleFeedback.free(runner, runner, "Continue"), () -> {
 
@@ -204,7 +203,7 @@ public class Run {
 	private void endedOr(Optional<Flow> onEnded, Flow other) {
 		if (isEnded()) {
 			onEnded.ifPresent(Flow::apply);
-			clear();
+			failTheRun();
 		} else
 			other.apply();
 	}
@@ -231,26 +230,47 @@ public class Run {
 	/**
 	 * Vérifie que le run continu apres le fait d'avoir approché le server
 	 */
-	private void checkApprochServer() {
+	private void checkApprochServer(ApprochingServerEvent evt) {
 
-		endedOr(Optional.empty(), this::approchServer);
+		endedOr(Optional.empty(), this::winTherun);
 
 	}
 
-	private void approchServer() {
+	/**
+	 * Détermination du plan d'accès
+	 */
+	private void prepareToCommitAccess() {
 
-		// TODO il faut demander le "plan daccès"
+		game.apply(new AccesPlanDecision(server), this::commitAccess);
 
-		clear();
+	}
+
+	private void commitAccess(AccesPlanDecision accessPlan) {
+		game.chat("{0} access {1}", game.getRunner(), server);
+		AccesPlanManager access = server.access(accessPlan, new AccesPlanManager(game, this::cleanUp));
+		access.commit();
+	}
+
+	private void failTheRun() {
+
+		game.chat("The run is failed");
+
+		setStatus(Status.UNSUCCESFUL);
+		game.apply(new RunIsFailed(this), this::cleanUp);
+	}
+
+	private void winTherun() {
+
+		game.chat("The run is succesful");
+
+		setStatus(Status.SUCCESFUL);
+		game.apply(new RunIsSuccessful(this), this::prepareToCommitAccess);
 	}
 
 	/**
 	 * Nettoyage du run
 	 */
-	private void clear() {
-
-		if (isEnded())
-			setStatus(Status.UNSUCCESFUL);
+	private void cleanUp() {
 
 		cleared = true;
 		game.fire(new RunStatusEvent(this));

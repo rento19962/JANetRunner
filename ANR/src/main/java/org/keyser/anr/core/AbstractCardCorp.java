@@ -28,6 +28,10 @@ public class AbstractCardCorp extends AbstractCard {
 		match(CollectHabilities.class, em -> em.test(habilities.and(installed()).and(ch -> isAdvanceable())).call(this::registerAdvance));
 	}
 
+	public boolean hasAccesInArchives() {
+		return false;
+	}
+
 	public Optional<CorpServer> getServer() {
 		CardLocation location = getLocation();
 		if (location.isInServer())
@@ -46,12 +50,12 @@ public class AbstractCardCorp extends AbstractCard {
 		return Optional.empty();
 	}
 
-	private void registerAdvance(CollectHabilities hab) {
+	private void registerAdvance(CollectAbstractHabilites hab) {
 		UserAction rezz = new UserAction(getCorp(), this, new CostForAction(Cost.credit(1).withAction(1), new AdvanceAbstractCardAction<>(this)), "Advance");
 		hab.add(rezz.spendAndApply(this::doAdvance));
 	}
 
-	private void registerRezz(CollectHabilities hab) {
+	private void registerRezz(CollectAbstractHabilites hab) {
 		UserAction rezz = new UserAction(getCorp(), this, new CostForAction(getCost(), new RezzAbstractCardAction<>(this)), "Rezz");
 		hab.add(rezz.spendAndApply(this::doRezz));
 	}
